@@ -2,6 +2,7 @@ package org.example;
 
 import com.github.javaparser.*;
 import com.github.javaparser.ast.*;
+import com.github.javaparser.ast.expr.NameExpr; // added import
 import com.github.javaparser.symbolsolver.*;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.*;
 import com.github.javaparser.resolution.declarations.*;
@@ -40,17 +41,30 @@ public class JavaSolutionParser {
                     System.err.println("Error parsing file " + file.getPath() + ": " + e.getMessage());
                 }
             }
+        } else if (root.isFile() && root.getName().endsWith(".java")) {
+            try {
+                ParseResult<CompilationUnit> result = javaParser.parse(root);
+                if (result.isSuccessful() && result.getResult().isPresent()) {
+                    CompilationUnit cu = result.getResult().get();
+                    nodes.addAll(cu.findAll(Node.class));
+                }
+            } catch (Exception e) {
+                System.err.println("Error parsing file " + root.getPath() + ": " + e.getMessage());
+            }
         }
         return nodes;
     }
 
     // Helper method to collect .java files recursively.
     private void collectJavaFiles(File dir, List<File> javaFiles) {
-        for (File file : dir.listFiles()) {
-            if (file.isDirectory()) {
-                collectJavaFiles(file, javaFiles);
-            } else if (file.getName().endsWith(".java")) {
-                javaFiles.add(file);
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    collectJavaFiles(file, javaFiles);
+                } else if (file.getName().endsWith(".java")) {
+                    javaFiles.add(file);
+                }
             }
         }
     }
@@ -86,5 +100,43 @@ public class JavaSolutionParser {
             System.err.println("Error getting qualified signature for " + resolved.getName() + ": " + e.getMessage());
         }
         return "N/A";
+    }
+
+    // New method to extract detailed symbols (declared symbol, referenced symbol, return type, etc.)
+    public Map<String, Object> extractDetailedSymbols(Node node) {
+        Map<String, Object> symbolDetails = new HashMap<>();
+        if (node instanceof Resolvable) {
+            try {
+                ResolvedDeclaration resolved = (ResolvedDeclaration) ((Resolvable<?>) node).resolve();
+                symbolDetails.put("declaredSymbol", resolved.getName());
+                symbolDetails.put("qualifiedSignature", getQualifiedSignature(resolved));
+                if (resolved instanceof ResolvedMethodDeclaration) {
+                    symbolDetails.put("returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().describe());
+                } else if (resolved instanceof ResolvedValueDeclaration) {
+                    symbolDetails.put("valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
+                }
+            } catch (Exception e) {
+                symbolDetails.put("error", e.getMessage());
+            }
+        } else if (node instanceof NameExpr) {
+            try {
+                ResolvedDeclaration resolved = ((NameExpr) node).resolve();
+                symbolDetails.put("referencedSymbol", resolved.getName());
+                symbolDetails.put("qualifiedSignature", getQualifiedSignature(resolved));
+            } catch (Exception e) {
+                symbolDetails.put("error", e.getMessage());
+            }
+        } else if (node instanceof com.github.javaparser.ast.expr.MethodCallExpr) { // New branch for MethodCallExpr
+            try {
+                ResolvedDeclaration resolved = ((com.github.javaparser.ast.expr.MethodCallExpr) node).resolve();
+                symbolDetails.put("methodCall", resolved.getName());
+                symbolDetails.put("qualifiedSignature", getQualifiedSignature(resolved));
+            } catch (Exception e) {
+                symbolDetails.put("error", e.getMessage());
+            }
+        } else {
+            symbolDetails.put("error", "Node is not resolvable");
+        }
+        return symbolDetails;
     }
 }
