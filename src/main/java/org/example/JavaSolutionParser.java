@@ -1,10 +1,11 @@
-package simplejavascanner;
+package org.example;
 
 import com.github.javaparser.*;
 import com.github.javaparser.ast.*;
 import com.github.javaparser.symbolsolver.*;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.*;
 import com.github.javaparser.resolution.declarations.*;
+import com.github.javaparser.resolution.Resolvable;
 import java.io.File;
 import java.util.*;
 
@@ -36,7 +37,7 @@ public class JavaSolutionParser {
                         nodes.addAll(cu.findAll(Node.class));
                     }
                 } catch (Exception e) {
-                    // ...existing code: handle parsing errors as required...
+                    System.err.println("Error parsing file " + file.getPath() + ": " + e.getMessage());
                 }
             }
         }
@@ -57,12 +58,16 @@ public class JavaSolutionParser {
     // Extracts symbols for the given syntax node using the JavaParser symbol resolver.
     public Map<String, Object> extractSymbols(Node node) {
         Map<String, Object> symbolInfo = new HashMap<>();
-        try {
-            ResolvedDeclaration resolved = node.resolve();
-            symbolInfo.put("name", resolved.getName());
-            symbolInfo.put("qualifiedSignature", getQualifiedSignature(resolved));
-        } catch (Exception e) {
-            symbolInfo.put("error", e.getMessage());
+        if (node instanceof Resolvable) {
+            try {
+                ResolvedDeclaration resolved = ((Resolvable<? extends ResolvedDeclaration>) node).resolve();
+                symbolInfo.put("name", resolved.getName());
+                symbolInfo.put("qualifiedSignature", getQualifiedSignature(resolved));
+            } catch (Exception e) {
+                symbolInfo.put("error", e.getMessage());
+            }
+        } else {
+            symbolInfo.put("error", "Node is not resolvable");
         }
         return symbolInfo;
     }
@@ -78,7 +83,7 @@ public class JavaSolutionParser {
                 return ((ResolvedValueDeclaration) resolved).getType().describe();
             }
         } catch (Exception e) {
-            // ...existing code: handle exceptions silently...
+            System.err.println("Error getting qualified signature for " + resolved.getName() + ": " + e.getMessage());
         }
         return "N/A";
     }
