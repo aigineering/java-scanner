@@ -72,12 +72,9 @@ public class JavaSolutionParser {
                     if (result.isSuccessful() && result.getResult().isPresent()) {
                         CompilationUnit cu = result.getResult().get();
                         // Collect all nodes from the compilation unit
-                        nodes.addAll(cu.findAll(Node.class).stream().map(
-                                x -> {
-                                    SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(x);
-                                    registerNode(nodeInfo);
-                                    return nodeInfo;
-                                }).toList()
+                        nodes.addAll(cu.stream().map(
+//                        nodes.addAll(cu.findAll(Node.class).stream().map(
+                                this::registerSyntaxNode).toList()
                         );
                     } else {
                         System.err.println("Failed to parse file " + file.getPath() + ": " + result.getProblems());
@@ -91,12 +88,10 @@ public class JavaSolutionParser {
                 ParseResult<CompilationUnit> result = javaParser.parse(root);
                 if (result.isSuccessful() && result.getResult().isPresent()) {
                     CompilationUnit cu = result.getResult().get();
-                    nodes.addAll(cu.findAll(Node.class).stream().map(
-                            x -> {
-                                SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(x);
-                                registerNode(nodeInfo);
-                                return nodeInfo;
-                            }).toList()
+
+                    nodes.addAll(cu.stream().map(
+//                    nodes.addAll(cu.findAll(Node.class).stream().map(
+                            this::registerSyntaxNode).toList()
                     );
                 }
             } catch (Exception e) {
@@ -147,12 +142,27 @@ public class JavaSolutionParser {
 
     }
 
+    private SyntaxNodeInfo registerSyntaxNode(Node node) {
+
+        SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(node);
+        if (!registerNode(nodeInfo)) {
+            return nodeInfo;
+        }
+//        registerNodeData(nodeInfo, "nodeType", node.getClass().getSimpleName());
+//        registerNodeData(nodeInfo, "nodeText", node.toString());
+//        registerNodeData(nodeInfo, "nodeHash", Integer.toHexString(node.hashCode()));
+//        registerNodeData(nodeInfo, "location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
+        registerNodeData(nodeInfo, "registered_as", "syntaxNode");
+        return nodeInfo;
+    }
+
     private ResolvedDeclarationNodeInfo registerSymbol(ResolvedDeclaration resolved) {
         ResolvedDeclarationNodeInfo symbolNodeInfo = new ResolvedDeclarationNodeInfo(resolved);
         if (!registerNode(symbolNodeInfo)) {
             ;
             return symbolNodeInfo;
         }
+        registerNodeData(symbolNodeInfo, "registered_as", "resolve_declaration");
 
         registerNodeData(symbolNodeInfo, "resolved_name", resolved.getName());
         registerNodeData(symbolNodeInfo, "referencedSymbol", resolved.getName());
@@ -160,7 +170,7 @@ public class JavaSolutionParser {
         registerNodeData(symbolNodeInfo, "resolved_qualifiedSignature", getQualifiedSignature(resolved));
         if (resolved instanceof ResolvedMethodDeclaration) {
             var returnType = ((ResolvedMethodDeclaration) resolved).getReturnType();
-            var returnSymbol = new ResolvedTypeNodeInfo(returnType);
+            registerTypeSymbol(returnType);
             registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType());
         } else if (resolved instanceof ResolvedValueDeclaration) {
             registerNodeData(symbolNodeInfo, "valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
@@ -173,6 +183,8 @@ public class JavaSolutionParser {
         if (!registerNode(typeNodeInfo)) {
             return typeNodeInfo;
         }
+        registerNodeData(typeNodeInfo, "registered_as", "resolved_type");
+
         registerNodeData(typeNodeInfo, "typeName", type.describe());
         registerNodeData(typeNodeInfo, "typeQualifiedName", type.asReferenceType().getQualifiedName());
         registerNodeData(typeNodeInfo, "typeHash", Integer.toHexString(type.hashCode()));
@@ -197,9 +209,6 @@ public class JavaSolutionParser {
             } catch (Exception e) {
                 symbolInfo.put("error", e.getMessage());
             }
-        } else {
-            registerNodeData(nodeInfo, "extractSymbols_error", "Node is not resolvable");
-
         }
     }
 
@@ -231,10 +240,20 @@ public class JavaSolutionParser {
 
                 registerNodeData(symbolNodeInfo, "declaredSymbol", resolved.getName());
                 registerNodeData(symbolNodeInfo, "qualifiedSignature", getQualifiedSignature(resolved));
-                if (resolved instanceof ResolvedMethodDeclaration) {
-                    registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().describe());
-                } else if (resolved instanceof ResolvedValueDeclaration) {
-                    registerNodeData(symbolNodeInfo, "valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
+                if (resolved instanceof ResolvedMethodDeclaration resolvedMethod) {
+                    var returnType = resolvedMethod.getReturnType();
+                    registerNodeData(symbolNodeInfo, "returnType", returnType.describe());
+                    registerTypeSymbol(returnType);
+                } else if (resolved instanceof ResolvedValueDeclaration valueDeclaration) {
+                    registerNodeData(symbolNodeInfo, "valueType", valueDeclaration.getType().describe());
+                    var valueType = valueDeclaration.getType();
+                    registerTypeSymbol(valueType);
+                } else if (resolved instanceof ResolvedReferenceTypeDeclaration typeDeclaration) {
+                    registerNodeData(symbolNodeInfo, "typeDeclaration_typeName", typeDeclaration.getName());
+                    registerNodeData(symbolNodeInfo, "typeDeclaration_typeQualifiedName", typeDeclaration.getQualifiedName());
+                    registerNodeData(symbolNodeInfo, "typeDeclaration_typeHash", Integer.toHexString(typeDeclaration.hashCode()));
+                } else {
+                    registerNodeData(symbolNodeInfo, "typeDeclaration_typeName", "N/A");
                 }
             } catch (Exception e) {
                 symbolDetails.put("error", e.getMessage());
@@ -243,22 +262,20 @@ public class JavaSolutionParser {
             try {
                 ResolvedDeclaration resolved = ((NameExpr) node).resolve();
                 registerSymbol(resolved);
+                symbolDetails.put("nameExpr", resolved.getName());
 
 
             } catch (Exception e) {
-                symbolDetails.put("error", e.getMessage());
+                symbolDetails.put("extractDetailedSymbols_error", e.getMessage());
             }
         } else if (node instanceof com.github.javaparser.ast.expr.MethodCallExpr) { // New branch for MethodCallExpr
             try {
                 ResolvedDeclaration resolved = ((com.github.javaparser.ast.expr.MethodCallExpr) node).resolve();
+                registerSymbol(resolved);
                 symbolDetails.put("methodCall", resolved.getName());
-                symbolDetails.put("qualifiedSignature", getQualifiedSignature(resolved));
             } catch (Exception e) {
                 symbolDetails.put("error", e.getMessage());
             }
-        } else {
-//            symbolDetails.put("error", "Node is not resolvable");
-
         }
         return symbolDetails;
     }
