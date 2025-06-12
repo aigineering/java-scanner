@@ -14,7 +14,14 @@ public class Main {
             // Cast nodeObj to com.github.javaparser.ast.Node if needed
             com.github.javaparser.ast.Node node = (com.github.javaparser.ast.Node) nodeObj;
             Map<String, Object> symbolDetails = parser.extractDetailedSymbols(node);
-            System.out.println(symbolDetails);
+            Map<String, Object> symbols = parser.extractSymbols(node);
+            Map<String, Object> syntaxInfo = parser.extractSyntaxIndo(node);
+            System.out.println(node.getClass().getSimpleName() +
+                    ((!syntaxInfo.isEmpty())? (" - syntaxInfo: " + symbols) : "")+
+                    ((!symbolDetails.isEmpty())? (" - symbolDetails: " + symbols) : "")+
+                    ((!symbolDetails.isEmpty())? (" - symbolDetails: " + symbols) : "")
+                  );
+
         }
     }
 }

@@ -3,6 +3,7 @@ package org.example;
 import com.github.javaparser.*;
 import com.github.javaparser.ast.*;
 import com.github.javaparser.ast.expr.NameExpr; // added import
+import com.github.javaparser.ast.nodeTypes.NodeWithName;
 import com.github.javaparser.symbolsolver.*;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.*;
 import com.github.javaparser.resolution.declarations.*;
@@ -69,6 +70,33 @@ public class JavaSolutionParser {
         }
     }
 
+    public Map<String, Object> extractSyntaxIndo(Node node) {
+        Map<String, Object> extractSyntaxInfos = new HashMap<>();
+        extractSyntaxInfos.put("nodeType", node.getClass().getSimpleName());
+        extractSyntaxInfos.put("location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
+        extractSyntaxInfos.put("nodeText", node.toString());
+        extractSyntaxInfos.put("nodeHash", Integer.toHexString(node.hashCode()));
+        // Replace invalid typecheck with proper instanceof check
+        if (node instanceof CompilationUnit) {
+            CompilationUnit cu = (CompilationUnit) node;
+            extractSyntaxInfos.put("fileName", cu.getStorage().map(CompilationUnit.Storage::getFileName).orElse("unknown"));
+            extractSyntaxInfos.put("packageDeclaration", cu.getPackageDeclaration().map(NodeWithName::getNameAsString).orElse("default"));
+        } else {
+            extractSyntaxInfos.put("fileName", "N/A");
+            extractSyntaxInfos.put("packageDeclaration", "N/A");
+        }
+        // add the file name
+        if (node.getParentNode().isPresent()) {
+            Node parent = node.getParentNode().get();
+            extractSyntaxInfos.put("parentNodeType", parent.getClass().getSimpleName());
+            extractSyntaxInfos.put("parentLocation", parent.getRange().map(range -> range.begin.toString()).orElse("unknown"));
+        } else {
+            extractSyntaxInfos.put("parentNodeType", "None");
+            extractSyntaxInfos.put("parentLocation", "N/A");
+        }
+        return extractSyntaxInfos;
+    }
+
     // Extracts symbols for the given syntax node using the JavaParser symbol resolver.
     public Map<String, Object> extractSymbols(Node node) {
         Map<String, Object> symbolInfo = new HashMap<>();
@@ -102,7 +130,7 @@ public class JavaSolutionParser {
                 return ((ResolvedValueDeclaration) resolved).getType().describe();
             }
         } catch (Exception e) {
-            System.err.println("Error getting qualified signature for " + resolved.getName() + ": " + e.getMessage());
+//            System.err.println("Error getting qualified signature for " + resolved.getName() + ": " + e.getMessage());
         }
         return "N/A";
     }
@@ -140,7 +168,7 @@ public class JavaSolutionParser {
                 symbolDetails.put("error", e.getMessage());
             }
         } else {
-            symbolDetails.put("error", "Node is not resolvable");
+//            symbolDetails.put("error", "Node is not resolvable");
 
         }
         return symbolDetails;
