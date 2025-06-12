@@ -1,17 +1,52 @@
 package org.example;
 
-import com.github.javaparser.*;
-import com.github.javaparser.ast.*;
-import com.github.javaparser.ast.expr.NameExpr; // added import
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithName;
-import com.github.javaparser.symbolsolver.*;
-import com.github.javaparser.symbolsolver.resolution.typesolvers.*;
-import com.github.javaparser.resolution.declarations.*;
 import com.github.javaparser.resolution.Resolvable;
+import com.github.javaparser.resolution.declarations.ResolvedDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedValueDeclaration;
+import com.github.javaparser.symbolsolver.JavaSymbolSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
+
 import java.io.File;
 import java.util.*;
 
 public class JavaSolutionParser {
+
+    private final HashSet<INodeInfo> syntaxNodesSet = new HashSet<>();
+    private final Dictionary<INodeInfo, Map<String, Object>> syntaxNodesInfo = new Hashtable<>();
+
+    public Dictionary<INodeInfo, Map<String, Object>> getNodeInfos() {
+        return syntaxNodesInfo;
+    }
+
+    public HashSet<INodeInfo> getNodesSet() {
+        return syntaxNodesSet;
+    }
+
+    public boolean registerNode(INodeInfo nodeInfo) {
+        if (syntaxNodesSet.add(nodeInfo)) {
+            syntaxNodesInfo.put(nodeInfo, new HashMap<>());
+            return true;
+        }
+        return false;
+    }
+
+    public void registerNodeData(INodeInfo nodeInfo, String key, Object value) {
+        registerNode(nodeInfo);
+        Map<String, Object> nodeData = syntaxNodesInfo.get(nodeInfo);
+        if (nodeData != null) {
+            nodeData.put(key, value);
+        }
+    }
 
     private JavaParser javaParser;
 
@@ -25,8 +60,8 @@ public class JavaSolutionParser {
     }
 
     // Recursively loads all syntax nodes from Java files located under the given solution path.
-    public List<Node> loadSyntaxNodes(String solutionPath) {
-        List<Node> nodes = new ArrayList<>();
+    public List<INodeInfo> loadSyntaxNodes(String solutionPath) {
+        List<INodeInfo> nodes = new ArrayList<>();
         File root = new File(solutionPath);
         if (root.isDirectory()) {
             List<File> javaFiles = new ArrayList<>();
@@ -36,7 +71,16 @@ public class JavaSolutionParser {
                     ParseResult<CompilationUnit> result = javaParser.parse(file);
                     if (result.isSuccessful() && result.getResult().isPresent()) {
                         CompilationUnit cu = result.getResult().get();
-                        nodes.addAll(cu.findAll(Node.class));
+                        // Collect all nodes from the compilation unit
+                        nodes.addAll(cu.findAll(Node.class).stream().map(
+                                x -> {
+                                    SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(x);
+                                    registerNode(nodeInfo);
+                                    return nodeInfo;
+                                }).toList()
+                        );
+                    } else {
+                        System.err.println("Failed to parse file " + file.getPath() + ": " + result.getProblems());
                     }
                 } catch (Exception e) {
                     System.err.println("Error parsing file " + file.getPath() + ": " + e.getMessage());
@@ -47,12 +91,26 @@ public class JavaSolutionParser {
                 ParseResult<CompilationUnit> result = javaParser.parse(root);
                 if (result.isSuccessful() && result.getResult().isPresent()) {
                     CompilationUnit cu = result.getResult().get();
-                    nodes.addAll(cu.findAll(Node.class));
+                    nodes.addAll(cu.findAll(Node.class).stream().map(
+                            x -> {
+                                SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(x);
+                                registerNode(nodeInfo);
+                                return nodeInfo;
+                            }).toList()
+                    );
                 }
             } catch (Exception e) {
                 System.err.println("Error parsing file " + root.getPath() + ": " + e.getMessage());
             }
         }
+        nodes.stream().filter(x -> x instanceof SyntaxNodeInfo)
+                .forEach(node -> extractSyntaxIndo((SyntaxNodeInfo) node));
+        nodes.stream().filter(x -> x instanceof SyntaxNodeInfo)
+                .forEach(node -> extractSymbols((SyntaxNodeInfo) node));
+        nodes.stream().filter(x -> x instanceof SyntaxNodeInfo)
+                .forEach(node -> extractDetailedSymbols((SyntaxNodeInfo) node));
+        // Register all nodes in the syntaxNodesSet
+
         return nodes;
     }
 
@@ -70,53 +128,79 @@ public class JavaSolutionParser {
         }
     }
 
-    public Map<String, Object> extractSyntaxIndo(Node node) {
+    public void extractSyntaxIndo(SyntaxNodeInfo nodeInfo) {
+        Node node = nodeInfo.node;
         Map<String, Object> extractSyntaxInfos = new HashMap<>();
-        extractSyntaxInfos.put("nodeType", node.getClass().getSimpleName());
-        extractSyntaxInfos.put("location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
-        extractSyntaxInfos.put("nodeText", node.toString());
-        extractSyntaxInfos.put("nodeHash", Integer.toHexString(node.hashCode()));
-        // Replace invalid typecheck with proper instanceof check
+        registerNodeData(nodeInfo, "nodeType", node.getClass().getSimpleName());
+        registerNodeData(nodeInfo, "location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
+        registerNodeData(nodeInfo, "nodeText", node.toString());
+        registerNodeData(nodeInfo, "nodeHash", Integer.toHexString(node.hashCode()));
+        // Add file name and package declaration if available
         if (node instanceof CompilationUnit) {
             CompilationUnit cu = (CompilationUnit) node;
-            extractSyntaxInfos.put("fileName", cu.getStorage().map(CompilationUnit.Storage::getFileName).orElse("unknown"));
-            extractSyntaxInfos.put("packageDeclaration", cu.getPackageDeclaration().map(NodeWithName::getNameAsString).orElse("default"));
+            registerNodeData(nodeInfo, "fileName", cu.getStorage().map(CompilationUnit.Storage::getFileName).orElse("unknown"));
+            registerNodeData(nodeInfo, "packageDeclaration", cu.getPackageDeclaration().map(NodeWithName::getNameAsString).orElse("default"));
         } else {
-            extractSyntaxInfos.put("fileName", "N/A");
-            extractSyntaxInfos.put("packageDeclaration", "N/A");
+            registerNodeData(nodeInfo, "fileName", "N/A");
+            registerNodeData(nodeInfo, "packageDeclaration", "N/A");
         }
-        // add the file name
-        if (node.getParentNode().isPresent()) {
-            Node parent = node.getParentNode().get();
-            extractSyntaxInfos.put("parentNodeType", parent.getClass().getSimpleName());
-            extractSyntaxInfos.put("parentLocation", parent.getRange().map(range -> range.begin.toString()).orElse("unknown"));
+
+    }
+
+    private ResolvedDeclarationNodeInfo registerSymbol(ResolvedDeclaration resolved) {
+        ResolvedDeclarationNodeInfo symbolNodeInfo = new ResolvedDeclarationNodeInfo(resolved);
+        if (!registerNode(symbolNodeInfo)) {
+            ;
+            return symbolNodeInfo;
+        }
+
+        registerNodeData(symbolNodeInfo, "resolved_name", resolved.getName());
+        registerNodeData(symbolNodeInfo, "referencedSymbol", resolved.getName());
+
+        registerNodeData(symbolNodeInfo, "resolved_qualifiedSignature", getQualifiedSignature(resolved));
+        if (resolved instanceof ResolvedMethodDeclaration) {
+            var returnType = ((ResolvedMethodDeclaration) resolved).getReturnType();
+            var returnSymbol = new ResolvedTypeNodeInfo(returnType);
+            registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType());
+        } else if (resolved instanceof ResolvedValueDeclaration) {
+            registerNodeData(symbolNodeInfo, "valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
+        }
+        return symbolNodeInfo;
+    }
+
+    private ResolvedTypeNodeInfo registerTypeSymbol(com.github.javaparser.resolution.types.ResolvedType type) {
+        ResolvedTypeNodeInfo typeNodeInfo = new ResolvedTypeNodeInfo(type);
+        if (!registerNode(typeNodeInfo)) {
+            return typeNodeInfo;
+        }
+        registerNodeData(typeNodeInfo, "typeName", type.describe());
+        registerNodeData(typeNodeInfo, "typeQualifiedName", type.asReferenceType().getQualifiedName());
+        registerNodeData(typeNodeInfo, "typeHash", Integer.toHexString(type.hashCode()));
+        registerNodeData(typeNodeInfo, "isReferenceType", type.isReferenceType());
+        var typeDeclaration = type.asReferenceType().getTypeDeclaration();
+        if (type.isReferenceType() && typeDeclaration.isPresent()) {
+            registerSymbol(typeDeclaration.get());
         } else {
-            extractSyntaxInfos.put("parentNodeType", "None");
-            extractSyntaxInfos.put("parentLocation", "N/A");
+            registerNodeData(typeNodeInfo, "typeDeclaration", "N/A");
         }
-        return extractSyntaxInfos;
+        return typeNodeInfo;
     }
 
     // Extracts symbols for the given syntax node using the JavaParser symbol resolver.
-    public Map<String, Object> extractSymbols(Node node) {
+    public void extractSymbols(SyntaxNodeInfo nodeInfo) {
+        Node node = nodeInfo.node;
         Map<String, Object> symbolInfo = new HashMap<>();
         if (node instanceof Resolvable) {
             try {
                 ResolvedDeclaration resolved = ((Resolvable<? extends ResolvedDeclaration>) node).resolve();
-                symbolInfo.put("name", resolved.getName());
-                symbolInfo.put("qualifiedSignature", getQualifiedSignature(resolved));
+                registerSymbol(resolved);
             } catch (Exception e) {
                 symbolInfo.put("error", e.getMessage());
             }
         } else {
-            symbolInfo.put("error", "Node is not resolvable");
-            // get the node type and location
-            symbolInfo.put("nodeType", node.getClass().getSimpleName());
-            symbolInfo.put("location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
-            // add the node text
-            symbolInfo.put("nodeText", node.toString());
+            registerNodeData(nodeInfo, "extractSymbols_error", "Node is not resolvable");
+
         }
-        return symbolInfo;
     }
 
     // Helper method to obtain a qualified signature or description from the resolved declaration.
@@ -136,17 +220,21 @@ public class JavaSolutionParser {
     }
 
     // New method to extract detailed symbols (declared symbol, referenced symbol, return type, etc.)
-    public Map<String, Object> extractDetailedSymbols(Node node) {
+    public Map<String, Object> extractDetailedSymbols(SyntaxNodeInfo nodeInfo) {
+        Node node = nodeInfo.node;
+
         Map<String, Object> symbolDetails = new HashMap<>();
         if (node instanceof Resolvable) {
             try {
                 ResolvedDeclaration resolved = (ResolvedDeclaration) ((Resolvable<?>) node).resolve();
-                symbolDetails.put("declaredSymbol", resolved.getName());
-                symbolDetails.put("qualifiedSignature", getQualifiedSignature(resolved));
+                ResolvedDeclarationNodeInfo symbolNodeInfo = registerSymbol(resolved);
+
+                registerNodeData(symbolNodeInfo, "declaredSymbol", resolved.getName());
+                registerNodeData(symbolNodeInfo, "qualifiedSignature", getQualifiedSignature(resolved));
                 if (resolved instanceof ResolvedMethodDeclaration) {
-                    symbolDetails.put("returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().describe());
+                    registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().describe());
                 } else if (resolved instanceof ResolvedValueDeclaration) {
-                    symbolDetails.put("valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
+                    registerNodeData(symbolNodeInfo, "valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
                 }
             } catch (Exception e) {
                 symbolDetails.put("error", e.getMessage());
@@ -154,8 +242,9 @@ public class JavaSolutionParser {
         } else if (node instanceof NameExpr) {
             try {
                 ResolvedDeclaration resolved = ((NameExpr) node).resolve();
-                symbolDetails.put("referencedSymbol", resolved.getName());
-                symbolDetails.put("qualifiedSignature", getQualifiedSignature(resolved));
+                registerSymbol(resolved);
+
+
             } catch (Exception e) {
                 symbolDetails.put("error", e.getMessage());
             }

@@ -1,27 +1,23 @@
 package org.example;
 
-import java.util.*;
+import java.util.Dictionary;
+import java.util.Map;
 
 public class Main {
     public static void main(String[] args) {
         // Instantiate the parser
         JavaSolutionParser parser = new JavaSolutionParser();
+        parser.loadSyntaxNodes("/Users/sim/src/simple-java-scanner");
         // Load syntax nodes from the solution path
-        List<?> nodes = parser.loadSyntaxNodes("/Users/sim/src/simple-java-scanner");
-        
-        // Collect and print output from symbol resolvers for each node
-        for (Object nodeObj : nodes) {
-            // Cast nodeObj to com.github.javaparser.ast.Node if needed
-            com.github.javaparser.ast.Node node = (com.github.javaparser.ast.Node) nodeObj;
-            Map<String, Object> symbolDetails = parser.extractDetailedSymbols(node);
-            Map<String, Object> symbols = parser.extractSymbols(node);
-            Map<String, Object> syntaxInfo = parser.extractSyntaxIndo(node);
-            System.out.println(node.getClass().getSimpleName() +
-                    ((!syntaxInfo.isEmpty())? (" - syntaxInfo: " + symbols) : "")+
-                    ((!symbolDetails.isEmpty())? (" - symbolDetails: " + symbols) : "")+
-                    ((!symbolDetails.isEmpty())? (" - symbolDetails: " + symbols) : "")
-                  );
 
-        }
+        var syntaxNodes = parser.getNodesSet();
+        Dictionary<INodeInfo, Map<String, Object>> nodes = parser.getNodeInfos();
+        // Iterate through the nodes and print their information
+        syntaxNodes.forEach(x -> {
+            var daat = nodes.get(x);
+            System.out.println("Node ID: " + x.getId() + " Node Type: " + x.getNodeType() + " Data: " + daat);
+        });
+
+        // Print the loaded nodes
     }
 }
