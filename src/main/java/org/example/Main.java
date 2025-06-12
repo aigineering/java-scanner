@@ -1,17 +1,20 @@
 package org.example;
 
-//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+import java.util.*;
+
 public class Main {
     public static void main(String[] args) {
-        //TIP Press <shortcut actionId="ShowIntentionActions"/> with your caret at the highlighted text
-        // to see how IntelliJ IDEA suggests fixing it.
-        System.out.printf("Hello and welcome!");
-
-        for (int i = 1; i <= 5; i++) {
-            //TIP Press <shortcut actionId="Debug"/> to start debugging your code. We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-            // for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.
-            System.out.println("i = " + i);
+        // Instantiate the parser
+        JavaSolutionParser parser = new JavaSolutionParser();
+        // Load syntax nodes from the solution path
+        List<?> nodes = parser.loadSyntaxNodes("/Users/sim/src/simple-java-scanner");
+        
+        // Collect and print output from symbol resolvers for each node
+        for (Object nodeObj : nodes) {
+            // Cast nodeObj to com.github.javaparser.ast.Node if needed
+            com.github.javaparser.ast.Node node = (com.github.javaparser.ast.Node) nodeObj;
+            Map<String, Object> symbolDetails = parser.extractDetailedSymbols(node);
+            System.out.println(symbolDetails);
         }
     }
 }

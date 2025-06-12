@@ -82,6 +82,11 @@ public class JavaSolutionParser {
             }
         } else {
             symbolInfo.put("error", "Node is not resolvable");
+            // get the node type and location
+            symbolInfo.put("nodeType", node.getClass().getSimpleName());
+            symbolInfo.put("location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
+            // add the node text
+            symbolInfo.put("nodeText", node.toString());
         }
         return symbolInfo;
     }
@@ -136,6 +141,7 @@ public class JavaSolutionParser {
             }
         } else {
             symbolDetails.put("error", "Node is not resolvable");
+
         }
         return symbolDetails;
     }
