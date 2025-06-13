@@ -20,7 +20,7 @@ public class Main {
             var daat = nodes.get(x);
             System.out.println(j +" Node ID: " + x.getId() + " Node Type: " + x.getNodeType() + " Data: " + daat);
         });
-
+        System.out.println("Number of nodes loaded: " + syntaxNodes.size());
         // Print the loaded nodes
     }
 }

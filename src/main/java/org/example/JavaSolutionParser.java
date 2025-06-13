@@ -148,10 +148,6 @@ public class JavaSolutionParser {
         if (!registerNode(nodeInfo)) {
             return nodeInfo;
         }
-//        registerNodeData(nodeInfo, "nodeType", node.getClass().getSimpleName());
-//        registerNodeData(nodeInfo, "nodeText", node.toString());
-//        registerNodeData(nodeInfo, "nodeHash", Integer.toHexString(node.hashCode()));
-//        registerNodeData(nodeInfo, "location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
         registerNodeData(nodeInfo, "registered_as", "syntaxNode");
         return nodeInfo;
     }

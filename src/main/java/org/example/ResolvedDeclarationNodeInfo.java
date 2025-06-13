@@ -33,11 +33,12 @@ public class ResolvedDeclarationNodeInfo implements INodeInfo {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public  boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         ResolvedDeclarationNodeInfo that = (ResolvedDeclarationNodeInfo) obj;
-        return declaration.equals(that.declaration);
+        return this.getId().equals(that.getId()) &&
+                this.getNodeType().equals(that.getNodeType());
     }
 }
 

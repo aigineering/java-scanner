@@ -33,7 +33,8 @@ public class SyntaxNodeInfo implements INodeInfo {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         SyntaxNodeInfo that = (SyntaxNodeInfo) obj;
-        return node.equals(that.node);
+        return this.getId().equals(that.getId()) &&
+               this.getNodeType().equals(that.getNodeType());
     }
 }
 

@@ -31,10 +31,11 @@ public class ResolvedTypeNodeInfo implements INodeInfo {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public  boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         ResolvedTypeNodeInfo that = (ResolvedTypeNodeInfo) obj;
-        return type.equals(that.type);
+        return this.getId().equals(that.getId()) &&
+                this.getNodeType().equals(that.getNodeType());
     }
 }
