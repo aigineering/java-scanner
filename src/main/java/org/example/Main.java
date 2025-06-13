@@ -22,5 +22,12 @@ public class Main {
         });
         System.out.println("Number of nodes loaded: " + syntaxNodes.size());
         // Print the loaded nodes
+
+        // Export nodes into Neo4j
+        try (Neo4JExporter exporter = new Neo4JExporter()) {
+            syntaxNodes.forEach(x -> {
+                exporter.exportNode(x, nodes.get(x));
+            });
+        }
     }
 }

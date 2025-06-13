@@ -56,6 +56,7 @@ public class JavaSolutionParser {
         typeSolver.add(new ReflectionTypeSolver());
         JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
         ParserConfiguration config = new ParserConfiguration().setSymbolResolver(symbolSolver);
+        config.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
         this.javaParser = new JavaParser(config);
     }
 
@@ -167,7 +168,7 @@ public class JavaSolutionParser {
         if (resolved instanceof ResolvedMethodDeclaration) {
             var returnType = ((ResolvedMethodDeclaration) resolved).getReturnType();
             registerTypeSymbol(returnType);
-            registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType());
+            registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().toString());
         } else if (resolved instanceof ResolvedValueDeclaration) {
             registerNodeData(symbolNodeInfo, "valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
         }

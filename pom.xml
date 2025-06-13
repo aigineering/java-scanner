@@ -19,6 +19,10 @@
         <artifactId>javaparser-symbol-solver-core</artifactId>
         <version>3.26.4</version>
     </dependency>
-
+    <dependency>
+        <groupId>org.neo4j.driver</groupId>
+        <artifactId>neo4j-java-driver</artifactId>
+        <version>5.28.5</version>
+    </dependency>
 </dependencies>
 </project>
