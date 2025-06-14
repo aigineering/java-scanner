@@ -4,11 +4,20 @@ public class ResolvedTypeNodeInfo implements INodeInfo {
     private com.github.javaparser.resolution.types.ResolvedType type = null;
     private String id = null;
     private String nodeType = null;
+    private int size = -100;
 
     public ResolvedTypeNodeInfo(com.github.javaparser.resolution.types.ResolvedType type) {
         this.type = type;
         this.id = Integer.toHexString(type.hashCode());
-        this.nodeType = type.getClass().getSimpleName();
+        try {
+            this.nodeType = type.getClass().getSimpleName();
+            if (this.nodeType.isEmpty()) {
+                this.nodeType = "UnknownType";
+            }
+        } catch (Exception e) {
+            this.nodeType = "UnknownType";
+        }
+        size = nodeType.length();
     }
 
     public com.github.javaparser.resolution.types.ResolvedType getType() {
@@ -31,7 +40,7 @@ public class ResolvedTypeNodeInfo implements INodeInfo {
     }
 
     @Override
-    public  boolean equals(Object obj) {
+    public boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         ResolvedTypeNodeInfo that = (ResolvedTypeNodeInfo) obj;

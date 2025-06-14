@@ -20,6 +20,11 @@
         <version>3.26.4</version>
     </dependency>
     <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-model</artifactId>
+        <version>3.9.10</version>  <!-- pick a version compatible with your Maven installation -->
+    </dependency>
+    <dependency>
         <groupId>org.neo4j.driver</groupId>
         <artifactId>neo4j-java-driver</artifactId>
         <version>5.28.5</version>

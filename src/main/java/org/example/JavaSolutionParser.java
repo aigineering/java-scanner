@@ -7,53 +7,81 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithName;
+import com.github.javaparser.resolution.MethodAmbiguityException;
 import com.github.javaparser.resolution.Resolvable;
+import com.github.javaparser.resolution.UnsolvedSymbolException;
 import com.github.javaparser.resolution.declarations.ResolvedDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedValueDeclaration;
+import com.github.javaparser.resolution.types.ResolvedType;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 public class JavaSolutionParser {
 
-    private final HashSet<INodeInfo> syntaxNodesSet = new HashSet<>();
+    private final NodeInfoTracker nodeInfoTracker = new NodeInfoTracker();
+    private final RelationshupTracker relationshipTracker = new RelationshupTracker();
+
+    //    private final HashSet<INodeInfo> syntaxNodesSet = new HashSet<>();
     private final Dictionary<INodeInfo, Map<String, Object>> syntaxNodesInfo = new Hashtable<>();
+    private final Map<GraphRelationship, Map<String, Object>> relationshipMapHashtable = new Hashtable<>();
 
     public Dictionary<INodeInfo, Map<String, Object>> getNodeInfos() {
         return syntaxNodesInfo;
     }
 
-    public HashSet<INodeInfo> getNodesSet() {
-        return syntaxNodesSet;
+    public Map<GraphRelationship, Map<String, Object>> relationshipData() {
+        return relationshipMapHashtable;
     }
 
-    public boolean registerNode(INodeInfo nodeInfo) {
-        if (syntaxNodesSet.add(nodeInfo)) {
-            syntaxNodesInfo.put(nodeInfo, new HashMap<>());
-            return true;
-        }
-        return false;
+    public HashSet<INodeInfo> getNodesSet() {
+
+        return nodeInfoTracker.getAllNodes();
     }
+
+    public HashSet<GraphRelationship> getRelationships() {
+        return relationshipTracker.getAllRelationships();
+    }
+
 
     public void registerNodeData(INodeInfo nodeInfo, String key, Object value) {
-        registerNode(nodeInfo);
+        this.nodeInfoTracker.registerNode(nodeInfo);
         Map<String, Object> nodeData = syntaxNodesInfo.get(nodeInfo);
-        if (nodeData != null) {
-            nodeData.put(key, value);
+        if (nodeData == null) {
+            nodeData = new HashMap<>();
+            syntaxNodesInfo.put(nodeInfo, nodeData);
         }
+
+        nodeData.put(key, value);
     }
 
-    private JavaParser javaParser;
+    public void registerRelationshipData(GraphRelationship relationship, String key, Object value) {
+        this.relationshipTracker.registerRelationship(relationship);
+        Map<String, Object> relationData = relationshipMapHashtable.computeIfAbsent(relationship, k -> new HashMap<>());
 
-    public JavaSolutionParser() {
+        relationData.put(key, value);
+    }
+
+    private final JavaParser javaParser;
+
+    private String baseSourcePath;
+
+    public JavaSolutionParser(String baseSourcePath) throws XmlPullParserException, IOException {
         // Setup the symbol solver using a CombinedTypeSolver; add ReflectionTypeSolver for core JDK classes.
         CombinedTypeSolver typeSolver = new CombinedTypeSolver();
+        this.baseSourcePath = baseSourcePath;
         typeSolver.add(new ReflectionTypeSolver());
+        typeSolver.add(new JavaParserTypeSolver(new File("src/main/java"))); // your source root
+        SolverUtils.registerJarsFromPom(typeSolver, baseSourcePath + "/pom.xml");
+//        typeSolver.add(new MavenTypeSolver(baseSourcePath, true));
         JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
         ParserConfiguration config = new ParserConfiguration().setSymbolResolver(symbolSolver);
         config.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
@@ -61,9 +89,8 @@ public class JavaSolutionParser {
     }
 
     // Recursively loads all syntax nodes from Java files located under the given solution path.
-    public List<INodeInfo> loadSyntaxNodes(String solutionPath) {
-        List<INodeInfo> nodes = new ArrayList<>();
-        File root = new File(solutionPath);
+    public void loadSyntaxNodes() {
+        File root = new File(baseSourcePath);
         if (root.isDirectory()) {
             List<File> javaFiles = new ArrayList<>();
             collectJavaFiles(root, javaFiles);
@@ -72,11 +99,8 @@ public class JavaSolutionParser {
                     ParseResult<CompilationUnit> result = javaParser.parse(file);
                     if (result.isSuccessful() && result.getResult().isPresent()) {
                         CompilationUnit cu = result.getResult().get();
-                        // Collect all nodes from the compilation unit
-                        nodes.addAll(cu.stream().map(
-//                        nodes.addAll(cu.findAll(Node.class).stream().map(
-                                this::registerSyntaxNode).toList()
-                        );
+                        cu.stream().forEach(this::registerSyntaxNode);
+
                     } else {
                         System.err.println("Failed to parse file " + file.getPath() + ": " + result.getProblems());
                     }
@@ -89,25 +113,37 @@ public class JavaSolutionParser {
                 ParseResult<CompilationUnit> result = javaParser.parse(root);
                 if (result.isSuccessful() && result.getResult().isPresent()) {
                     CompilationUnit cu = result.getResult().get();
+                    cu.stream().forEach(this::registerSyntaxNode);
 
-                    nodes.addAll(cu.stream().map(
-//                    nodes.addAll(cu.findAll(Node.class).stream().map(
-                            this::registerSyntaxNode).toList()
-                    );
                 }
             } catch (Exception e) {
                 System.err.println("Error parsing file " + root.getPath() + ": " + e.getMessage());
             }
         }
-        nodes.stream().filter(x -> x instanceof SyntaxNodeInfo)
-                .forEach(node -> extractSyntaxIndo((SyntaxNodeInfo) node));
-        nodes.stream().filter(x -> x instanceof SyntaxNodeInfo)
-                .forEach(node -> extractSymbols((SyntaxNodeInfo) node));
-        nodes.stream().filter(x -> x instanceof SyntaxNodeInfo)
-                .forEach(node -> extractDetailedSymbols((SyntaxNodeInfo) node));
-        // Register all nodes in the syntaxNodesSet
 
-        return nodes;
+    }
+
+    public void enrichAndDiscoverMoreNodes() {
+        // Iterate through all syntax nodes and extract symbols and detailed symbols.
+        var newNodes = nodeInfoTracker.getNewNodes();
+        while (!newNodes.isEmpty()) {
+            System.out.println("Found new nodes: " + newNodes.size());
+            nodeInfoTracker.clearNewNodes();
+            for (INodeInfo nodeInfo : newNodes) {
+                if (nodeInfo instanceof SyntaxNodeInfo syntaxNodeInfo) {
+                    describeSyntaxInfo(syntaxNodeInfo);
+                    addParentToNode(syntaxNodeInfo);
+                    extractSymbols(syntaxNodeInfo);
+                    extractDetailedSymbols(syntaxNodeInfo);
+
+                } else if (nodeInfo instanceof ResolvedDeclarationNodeInfo resolvedNodeInfo) {
+                    describeSymbolNode(resolvedNodeInfo);
+                } else if (nodeInfo instanceof ResolvedTypeNodeInfo typeNodeInfo) {
+                    describeTypeSymbol(typeNodeInfo);
+                }
+            }
+            newNodes = nodeInfoTracker.getNewNodes();
+        }
     }
 
     // Helper method to collect .java files recursively.
@@ -124,9 +160,114 @@ public class JavaSolutionParser {
         }
     }
 
-    public void extractSyntaxIndo(SyntaxNodeInfo nodeInfo) {
+
+    private SyntaxNodeInfo registerSyntaxNode(Node node) {
+
+        SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(node);
+        nodeInfoTracker.registerNode(nodeInfo);
+        registerNodeData(nodeInfo, "registered_as", "syntaxNode");
+        return nodeInfo;
+    }
+
+    private ResolvedDeclarationNodeInfo registerSymbol(ResolvedDeclaration resolved) {
+        ResolvedDeclarationNodeInfo symbolNodeInfo = new ResolvedDeclarationNodeInfo(resolved);
+        if (!nodeInfoTracker.registerNode(symbolNodeInfo)) {
+
+            return symbolNodeInfo;
+        }
+
+        return symbolNodeInfo;
+    }
+
+    private ResolvedTypeNodeInfo registerTypeSymbol(ResolvedType type) {
+        ResolvedTypeNodeInfo typeNodeInfo = new ResolvedTypeNodeInfo(type);
+        if (!nodeInfoTracker.registerNode(typeNodeInfo)) {
+            return typeNodeInfo;
+        }
+
+        return typeNodeInfo;
+    }
+
+
+    public void describeSymbolNode(ResolvedDeclarationNodeInfo nodeInfo) {
+        var resolved = nodeInfo.getDeclaration();
+        ResolvedDeclarationNodeInfo symbolNodeInfo = new ResolvedDeclarationNodeInfo(resolved);
+
+        registerNodeData(symbolNodeInfo, "registered_as", "resolve_declaration");
+
+        registerNodeData(symbolNodeInfo, "resolved_name", resolved.getName());
+        registerNodeData(symbolNodeInfo, "referencedSymbol", resolved.getName());
+
+        registerNodeData(symbolNodeInfo, "resolved_qualifiedSignature", getQualifiedSignature(resolved));
+        if (resolved instanceof ResolvedMethodDeclaration) {
+            try {
+                var returnType = ((ResolvedMethodDeclaration) resolved).getReturnType();
+                var target = registerTypeSymbol(returnType);
+                var relationship = new GraphRelationship(symbolNodeInfo, target, "return_type_of");
+                registerRelationshipData(relationship, "uses", "return_type");
+                registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().toString());
+            } catch (UnsolvedSymbolException exception) {
+
+                registerNodeData(symbolNodeInfo, "returnType", "UnsolvedSymbolException: " + exception.getMessage());
+                System.err.println("UnsolvedSymbolException for return type in " + resolved.getName() + ": " + exception.getMessage() + " For node :" + nodeInfo);
+            }
+        } else if (resolved instanceof ResolvedValueDeclaration resolvedValueDeclaration) {
+            try {
+                var resType = resolvedValueDeclaration.getType();
+                var target = registerTypeSymbol(resType);
+                var relationship = new GraphRelationship(symbolNodeInfo, target, "value_type_of");
+                registerRelationshipData(relationship, "uses", "value_type");
+                registerNodeData(symbolNodeInfo, "valueType", resType.describe());
+            } catch (MethodAmbiguityException e) {
+//                throw new RuntimeException(e);
+                registerNodeData(symbolNodeInfo, "valueType", "MethodAmbiguityException: " + e.getMessage());
+                System.err.println("MethodAmbiguityException for value type in " + resolved.getName() + ": " + e.getMessage() + " For node :" + nodeInfo);
+            } catch (UnsolvedSymbolException exception) {
+                registerNodeData(symbolNodeInfo, "valueType", "UnsolvedSymbolException: " + exception.getMessage());
+                System.err.println("UnsolvedSymbolException for value type in " + resolved.getName() + ": " + exception.getMessage() + " For node :" + nodeInfo);
+            }
+        }
+    }
+
+    public void describeTypeSymbol(ResolvedTypeNodeInfo typeNodeInfo) {
+        var type = typeNodeInfo.getType();
+        registerNodeData(typeNodeInfo, "registered_as", "resolved_type");
+
+        registerNodeData(typeNodeInfo, "typeName", type.describe());
+//        if (typeNodeInfo is PrimitiveTypeUsage pr)
+        registerNodeData(typeNodeInfo, "isReferenceType", type.isReferenceType());
+        registerNodeData(typeNodeInfo, "isNull", type.isNull());
+        registerNodeData(typeNodeInfo, "isNumericType", type.isNumericType());
+        registerNodeData(typeNodeInfo, "isPrimitive", type.isPrimitive());
+        registerNodeData(typeNodeInfo, "isReference", type.isReference());
+        registerNodeData(typeNodeInfo, "isReferenceType", type.isReferenceType());
+        if (type.isReferenceType()) {
+            var refType = type.asReferenceType();
+            var relationship = new GraphRelationship(typeNodeInfo, registerTypeSymbol(refType), "type_of");
+            registerRelationshipData(relationship, "uses", "reference_type");
+            var typeDeclaration = refType.getTypeDeclaration();
+            if (typeDeclaration.isPresent()) {
+                var typeDeclarationD = typeDeclaration.get();
+                registerNodeData(typeNodeInfo, "typeDeclaration", typeDeclarationD.getName());
+
+            }
+            if (type.isReferenceType() && typeDeclaration.isPresent()) {
+                registerSymbol(typeDeclaration.get());
+            } else {
+                registerNodeData(typeNodeInfo, "typeDeclaration", "N/A");
+            }
+        } else {
+            registerNodeData(typeNodeInfo, "typeName", type.describe());
+            registerNodeData(typeNodeInfo, "typeSimpleName", type.describe());
+        }
+
+        registerNodeData(typeNodeInfo, "typeHash", Integer.toHexString(type.hashCode()));
+        registerNodeData(typeNodeInfo, "isReferenceType", type.isReferenceType());
+
+    }
+
+    public void describeSyntaxInfo(SyntaxNodeInfo nodeInfo) {
         Node node = nodeInfo.node;
-        Map<String, Object> extractSyntaxInfos = new HashMap<>();
         registerNodeData(nodeInfo, "nodeType", node.getClass().getSimpleName());
         registerNodeData(nodeInfo, "location", node.getRange().map(range -> range.begin.toString()).orElse("unknown"));
         registerNodeData(nodeInfo, "nodeText", node.toString());
@@ -143,68 +284,27 @@ public class JavaSolutionParser {
 
     }
 
-    private SyntaxNodeInfo registerSyntaxNode(Node node) {
-
-        SyntaxNodeInfo nodeInfo = new SyntaxNodeInfo(node);
-        if (!registerNode(nodeInfo)) {
-            return nodeInfo;
-        }
-        registerNodeData(nodeInfo, "registered_as", "syntaxNode");
-        return nodeInfo;
-    }
-
-    private ResolvedDeclarationNodeInfo registerSymbol(ResolvedDeclaration resolved) {
-        ResolvedDeclarationNodeInfo symbolNodeInfo = new ResolvedDeclarationNodeInfo(resolved);
-        if (!registerNode(symbolNodeInfo)) {
-            ;
-            return symbolNodeInfo;
-        }
-        registerNodeData(symbolNodeInfo, "registered_as", "resolve_declaration");
-
-        registerNodeData(symbolNodeInfo, "resolved_name", resolved.getName());
-        registerNodeData(symbolNodeInfo, "referencedSymbol", resolved.getName());
-
-        registerNodeData(symbolNodeInfo, "resolved_qualifiedSignature", getQualifiedSignature(resolved));
-        if (resolved instanceof ResolvedMethodDeclaration) {
-            var returnType = ((ResolvedMethodDeclaration) resolved).getReturnType();
-            registerTypeSymbol(returnType);
-            registerNodeData(symbolNodeInfo, "returnType", ((ResolvedMethodDeclaration) resolved).getReturnType().toString());
-        } else if (resolved instanceof ResolvedValueDeclaration) {
-            registerNodeData(symbolNodeInfo, "valueType", ((ResolvedValueDeclaration) resolved).getType().describe());
-        }
-        return symbolNodeInfo;
-    }
-
-    private ResolvedTypeNodeInfo registerTypeSymbol(com.github.javaparser.resolution.types.ResolvedType type) {
-        ResolvedTypeNodeInfo typeNodeInfo = new ResolvedTypeNodeInfo(type);
-        if (!registerNode(typeNodeInfo)) {
-            return typeNodeInfo;
-        }
-        registerNodeData(typeNodeInfo, "registered_as", "resolved_type");
-
-        registerNodeData(typeNodeInfo, "typeName", type.describe());
-        registerNodeData(typeNodeInfo, "typeQualifiedName", type.asReferenceType().getQualifiedName());
-        registerNodeData(typeNodeInfo, "typeHash", Integer.toHexString(type.hashCode()));
-        registerNodeData(typeNodeInfo, "isReferenceType", type.isReferenceType());
-        var typeDeclaration = type.asReferenceType().getTypeDeclaration();
-        if (type.isReferenceType() && typeDeclaration.isPresent()) {
-            registerSymbol(typeDeclaration.get());
+    public void addParentToNode(SyntaxNodeInfo nodeInfo) {
+        Node node = nodeInfo.node;
+        if (node.hasParentNode()) {
+            Node parentNode = node.getParentNode().orElseThrow();
+            SyntaxNodeInfo parentNodeInfo = registerSyntaxNode(parentNode);
+            GraphRelationship relationship = new GraphRelationship(nodeInfo, parentNodeInfo, "parent_of");
+            registerRelationshipData(relationship, "has_parent", true);
         } else {
-            registerNodeData(typeNodeInfo, "typeDeclaration", "N/A");
+            System.err.println("Node has no parent: " + node.getClass().getSimpleName());
         }
-        return typeNodeInfo;
     }
 
     // Extracts symbols for the given syntax node using the JavaParser symbol resolver.
     public void extractSymbols(SyntaxNodeInfo nodeInfo) {
         Node node = nodeInfo.node;
-        Map<String, Object> symbolInfo = new HashMap<>();
         if (node instanceof Resolvable) {
             try {
                 ResolvedDeclaration resolved = ((Resolvable<? extends ResolvedDeclaration>) node).resolve();
                 registerSymbol(resolved);
             } catch (Exception e) {
-                symbolInfo.put("error", e.getMessage());
+//                symbolInfo.put("error", e.getMessage());
             }
         }
     }

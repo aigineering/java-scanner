@@ -1,4 +1,5 @@
 package org.example;
+
 import com.github.javaparser.resolution.declarations.ResolvedDeclaration;
 
 public class ResolvedDeclarationNodeInfo implements INodeInfo {
@@ -6,10 +7,25 @@ public class ResolvedDeclarationNodeInfo implements INodeInfo {
     private String id = null;
     private String nodeType = null;
 
+    private  int size = -100; // Default size, can be adjusted later if needed
     public ResolvedDeclarationNodeInfo(ResolvedDeclaration declaration) {
         this.declaration = declaration;
-        this.id = Integer.toHexString(declaration.toAst().get().hashCode());
-        this.nodeType = declaration.getClass().getSimpleName();
+
+//        var ast = declaration.toAst();
+//
+//        if (ast.isEmpty()) {
+//            throw new IllegalArgumentException("ResolvedDeclaration must have an AST node.");
+//        }
+
+        this.id = Integer.toHexString(declaration.hashCode());
+        try {
+            this.nodeType = declaration.getClass().getSimpleName();
+            if (this.nodeType.isEmpty()) {
+                this.nodeType = "UnknownDeclaration";
+            }
+        } catch (Exception e) {
+            this.nodeType = "UnknownDeclaration";
+        }
     }
 
     public ResolvedDeclaration getDeclaration() {
@@ -33,7 +49,7 @@ public class ResolvedDeclarationNodeInfo implements INodeInfo {
     }
 
     @Override
-    public  boolean equals(Object obj) {
+    public boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         ResolvedDeclarationNodeInfo that = (ResolvedDeclarationNodeInfo) obj;

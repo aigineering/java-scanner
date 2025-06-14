@@ -2,7 +2,7 @@ package org.example;
 
 import org.neo4j.driver.*;
 
-import java.util.Dictionary;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -27,34 +27,42 @@ public class Neo4JExporter implements AutoCloseable {
 
     // Export function: upsert node with label from getNodeType() and id property from getId(), plus extra data.
     public void exportNode(INodeInfo node, Map<String, Object> data) {
-        // Track node label
+        if (data == null) {
+            data = new HashMap<>();
+        }
         nodeLabels.add(node.getNodeType());
         try (Session session = driver.session()) {
             session.run("MERGE (n:" + node.getNodeType() + " {id: $id}) SET n += $data",
                     Values.parameters("id", node.getId(), "data", data));
             // Added logging for node export
-            System.out.println("Exported node with label: " + node.getNodeType() + " and id: " + node.getId());
+//            System.out.println("Exported node with label: " + node.getNodeType() + " and id: " + node.getId());
         } catch (Exception e) {
             System.err.println("Failed to export node with label: " + node.getNodeType() +
-                    " and id: " + node.getId() + ". Error: " + e.getMessage() + "\n" +
+                    " and id: " + node.getId() + ". Error: " + e.getMessage() + "\n\n" +
                     "Data " + data + "\n");
             //throw new RuntimeException(e);
         }
     }
 
     // Export function: upsert relationship between nodes.
-    public void exportRelationShip(GraphRelationship relationship, Dictionary<String, Object> data) {
+    public void exportRelationShip(GraphRelationship relationship, Map<String, Object> data) {
         // Track labels for nodes and relationship
         nodeLabels.add(relationship.from().getNodeType());
         nodeLabels.add(relationship.to().getNodeType());
         relationshipLabels.add(relationship.label());
         try (Session session = driver.session()) {
-            session.run("MATCH (a:" + relationship.from().getNodeType() + " {id: $fromId}), (b:" + relationship.to().getNodeType() + " {id: $toId}) " +
-                            "MERGE (a)-[r:" + relationship.label() + "]->(b) SET r += $data",
-                    Values.parameters("fromId", relationship.from().getId(), "toId", relationship.to().getId(), "data", data));
-            // Added logging for relationship export
-            System.out.println("Exported relationship with label: " + relationship.label() +
-                    " between nodes " + relationship.from().getId() + " and " + relationship.to().getId());
+            try {
+                session.run("MATCH (a:" + relationship.from().getNodeType() + " {id: $fromId}), (b:" + relationship.to().getNodeType() + " {id: $toId}) " +
+                                "MERGE (a)-[r:" + relationship.label() + "]->(b) SET r += $data",
+                        Values.parameters("fromId", relationship.from().getId(), "toId", relationship.to().getId(), "data", data));
+                // Added logging for relationship export
+                System.out.println("Exported relationship with label: " + relationship.label() +
+                        " between nodes " + relationship.from().getId() + " and " + relationship.to().getId());
+            } catch (Exception e) {
+                System.err.println("Failed to export node with relationship: " + relationship +". Error: " + e.getMessage() + "\n\n" +
+                        "Data " + data + "\n");
+                //throw new RuntimeException(e);
+            }
         }
     }
 
